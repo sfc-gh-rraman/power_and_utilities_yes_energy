@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from typing import Optional
-from agents.orchestrator import AgentOrchestrator
+from backend.agents.orchestrator import AgentOrchestrator
 
 router = APIRouter()
 

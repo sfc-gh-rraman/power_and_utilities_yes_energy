@@ -12,11 +12,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def get_snowflake_connection():
+    """Get Snowflake connection - works in SPCS (token auth) and locally (connection name)."""
+    snowflake_host = os.getenv("SNOWFLAKE_HOST")
+    
+    if snowflake_host:
+        # Running in SPCS - use token-based authentication
+        conn = snowflake.connector.connect(
+            host=snowflake_host,
+            account=os.getenv("SNOWFLAKE_ACCOUNT"),
+            authenticator="oauth",
+            token=open("/snowflake/session/token").read(),
+            database=os.getenv("SNOWFLAKE_DATABASE", "POWER_UTILITIES_DB"),
+            schema=os.getenv("SNOWFLAKE_SCHEMA", "ATOMIC"),
+            warehouse="COMPUTE_WH",
+        )
+        return conn
+    else:
+        # Running locally - use connection name
+        return snowflake.connector.connect(
+            connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME", "my_snowflake")
+        )
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.snow_conn = snowflake.connector.connect(
-        connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME", "demo")
-    )
+    app.state.snow_conn = get_snowflake_connection()
     yield
     app.state.snow_conn.close()
 
@@ -35,7 +55,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routes import grid, prices, weather, chat, search, peak_prediction, risk, dispatch
+from backend.routes import grid, prices, weather, chat, search, peak_prediction, risk, dispatch
 
 app.include_router(grid.router, prefix="/api/grid", tags=["Grid"])
 app.include_router(prices.router, prefix="/api/prices", tags=["Prices"])

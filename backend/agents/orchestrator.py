@@ -4,10 +4,10 @@ Routes queries to specialized agents based on intent
 """
 
 from typing import Optional
-from agents.load_agent import LoadForecastAgent
-from agents.price_agent import PriceAnalystAgent
-from agents.weather_agent import WeatherRiskAgent
-from agents.search_agent import KnowledgeSearchAgent
+from backend.agents.load_agent import LoadForecastAgent
+from backend.agents.price_agent import PriceAnalystAgent
+from backend.agents.weather_agent import WeatherRiskAgent
+from backend.agents.search_agent import KnowledgeSearchAgent
 
 class AgentOrchestrator:
     """Routes queries to appropriate specialized agents."""

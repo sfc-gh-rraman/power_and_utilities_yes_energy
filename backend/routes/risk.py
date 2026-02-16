@@ -6,9 +6,9 @@ import pandas as pd
 import numpy as np
 import sys
 sys.path.insert(0, '..')
-from models.volatility import VolatilityAnalyzer
-from models.var_calculator import VaRCalculator
-from models.monte_carlo import MonteCarloSimulator
+from backend.models.volatility import VolatilityAnalyzer
+from backend.models.var_calculator import VaRCalculator
+from backend.models.monte_carlo import MonteCarloSimulator
 
 router = APIRouter()
 

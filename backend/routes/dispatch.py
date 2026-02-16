@@ -5,7 +5,7 @@ from typing import Optional
 import pandas as pd
 import sys
 sys.path.insert(0, '..')
-from models.stress_tester import StressTester, PREDEFINED_SCENARIOS
+from backend.models.stress_tester import StressTester, PREDEFINED_SCENARIOS
 
 router = APIRouter()
 

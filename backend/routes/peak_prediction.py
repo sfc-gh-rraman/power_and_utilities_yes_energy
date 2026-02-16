@@ -5,7 +5,7 @@ from typing import Optional
 import pandas as pd
 import sys
 sys.path.insert(0, '..')
-from models.peak_predictor import PeakPredictor
+from backend.models.peak_predictor import PeakPredictor
 
 router = APIRouter()
 
