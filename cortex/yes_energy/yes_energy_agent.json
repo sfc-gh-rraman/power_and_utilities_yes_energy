@@ -1,0 +1,44 @@
+{
+  "name": "YES_ENERGY_MARKET_AGENT",
+  "description": "AI agent for multi-ISO power market intelligence. Covers ERCOT, PJM, MISO, CAISO, NYISO, ISO-NE, and SPP markets. Answers questions about prices (LMPs, 5x16, spreads), loads, forecasts, and outages across North American electricity markets.",
+  "model": "claude-3-5-sonnet",
+  "role": "You are an expert power market analyst with deep knowledge of North American electricity markets. You help traders, analysts, and operations teams understand market conditions, price movements, load patterns, and outage impacts across all major ISOs/RTOs.",
+  
+  "tools": [
+    {
+      "tool_name": "market_analyst",
+      "tool_type": "cortex_analyst",
+      "tool_spec": {
+        "semantic_model_file": "@POWER_UTILITIES_DB.ML.SEMANTIC_MODELS/yes_energy_semantic_model.yaml"
+      },
+      "description": "Query Yes Energy market data including prices (DA/RT LMPs), loads, hubs, zones, and outages across ERCOT, PJM, MISO, CAISO, NYISO, ISO-NE, and SPP."
+    },
+    {
+      "tool_name": "rto_news_search",
+      "tool_type": "cortex_search",
+      "tool_spec": {
+        "service": "POWER_UTILITIES_DB.DOCS.RTO_NEWS_SEARCH",
+        "max_results": 10
+      },
+      "description": "Search RTO and ISO news articles for market intelligence, regulatory updates, and industry developments."
+    }
+  ],
+
+  "example_queries": [
+    "What did West Hub 5x16 clear yesterday?",
+    "Pull the top 5 PJM RTO load values and hours over the last 5 years",
+    "Compare ERCOT vs PJM spot prices this week",
+    "What are the current outages in MISO?",
+    "Show me Western Hub prices for the last 30 days",
+    "What is the DA/RT spread at NP15?",
+    "Any news about ERCOT grid conditions?",
+    "What's the Illinois Hub clearing at?",
+    "Show me peak load hours for CAISO this summer"
+  ],
+
+  "deployment": {
+    "database": "POWER_UTILITIES_DB",
+    "schema": "ML",
+    "warehouse": "COMPUTE_WH"
+  }
+}

@@ -1,0 +1,553 @@
+# =============================================================================
+# Cortex Analyst Semantic Model
+# Yes Energy Market Intelligence - Multi-ISO Coverage
+# =============================================================================
+
+name: yes_energy_market_model
+description: >
+  Comprehensive semantic model for Yes Energy power market data across all major
+  North American ISOs (ERCOT, PJM, MISO, CAISO, NYISO, ISO-NE, SPP). Enables 
+  natural language queries for prices, loads, forecasts, and outages.
+
+tables:
+  # ============================================
+  # DART_PRICES - LMP Pricing Data
+  # ============================================
+  - name: dart_prices
+    description: Day-ahead and real-time locational marginal prices by node/hub across all ISOs.
+    base_table:
+      database: YES_ENERGY_FOUNDATION_DATA
+      schema: FOUNDATION
+      table: DART_PRICES
+    primary_key:
+      columns: [datetime, objectid]
+
+    dimensions:
+      - name: objectid
+        synonyms: ["node_id", "hub_id"]
+        description: Yes Energy object identifier for price node or hub.
+        expr: OBJECTID
+        data_type: NUMBER
+
+      - name: iso
+        synonyms: ["market", "rto", "grid operator"]
+        description: Independent System Operator / Regional Transmission Organization.
+        expr: ISO
+        data_type: TEXT
+        sample_values: ["ERCOT", "PJMISO", "MISO", "CAISO", "NYISO", "NEISO", "SPP"]
+
+      - name: timezone
+        description: Timezone of the price data.
+        expr: TIMEZONE
+        data_type: TEXT
+
+      - name: rt_final
+        synonyms: ["is_final", "final"]
+        description: Whether real-time price is final or preliminary.
+        expr: RTFINAL
+        data_type: TEXT
+
+    time_dimensions:
+      - name: datetime
+        synonyms: ["time", "timestamp", "hour", "trading_hour"]
+        description: Timestamp of the price observation.
+        expr: DATETIME
+        data_type: TIMESTAMP
+
+      - name: trade_date
+        synonyms: ["date", "day"]
+        description: Trading date.
+        expr: DATE(DATETIME)
+        data_type: DATE
+
+      - name: hour_ending
+        synonyms: ["he", "hour"]
+        description: Hour ending (1-24).
+        expr: HOUR(DATETIME) + 1
+        data_type: NUMBER
+
+    facts:
+      - name: da_lmp
+        synonyms: ["day ahead price", "dam price", "forward price", "da price"]
+        description: Day-ahead LMP in $/MWh.
+        expr: DALMP
+        data_type: NUMBER
+
+      - name: da_congestion
+        synonyms: ["day ahead congestion", "dam congestion"]
+        description: Day-ahead congestion component in $/MWh.
+        expr: DACONG
+        data_type: NUMBER
+
+      - name: da_loss
+        synonyms: ["day ahead loss", "dam loss"]
+        description: Day-ahead loss component in $/MWh.
+        expr: DALOSS
+        data_type: NUMBER
+
+      - name: rt_lmp
+        synonyms: ["real time price", "rtm price", "spot price", "rt price"]
+        description: Real-time LMP in $/MWh.
+        expr: RTLMP
+        data_type: NUMBER
+
+      - name: rt_congestion
+        synonyms: ["real time congestion", "rtm congestion"]
+        description: Real-time congestion component in $/MWh.
+        expr: RTCONG
+        data_type: NUMBER
+
+      - name: rt_loss
+        synonyms: ["real time loss", "rtm loss"]
+        description: Real-time loss component in $/MWh.
+        expr: RTLOSS
+        data_type: NUMBER
+
+      - name: ha_lmp
+        synonyms: ["hour ahead price"]
+        description: Hour-ahead LMP in $/MWh.
+        expr: HALMP
+        data_type: NUMBER
+
+    metrics:
+      - name: avg_da_price
+        synonyms: ["average day ahead"]
+        description: Average day-ahead LMP.
+        expr: AVG(dart_prices.DALMP)
+
+      - name: avg_rt_price
+        synonyms: ["average real time", "average spot"]
+        description: Average real-time LMP.
+        expr: AVG(dart_prices.RTLMP)
+
+      - name: max_rt_price
+        synonyms: ["peak price", "highest price"]
+        description: Maximum real-time LMP.
+        expr: MAX(dart_prices.RTLMP)
+
+      - name: da_rt_spread
+        synonyms: ["basis", "spread"]
+        description: Average spread between DA and RT prices.
+        expr: AVG(dart_prices.DALMP - dart_prices.RTLMP)
+
+  # ============================================
+  # PRICE_NODES - Node/Hub Reference
+  # ============================================
+  - name: price_nodes
+    description: Reference table for price nodes and trading hubs across ISOs.
+    base_table:
+      database: YES_ENERGY_FOUNDATION_DATA
+      schema: FOUNDATION
+      table: PRICE_NODES
+    primary_key:
+      columns: [objectid]
+
+    dimensions:
+      - name: objectid
+        description: Yes Energy object identifier.
+        expr: OBJECTID
+        data_type: NUMBER
+
+      - name: iso
+        synonyms: ["market", "rto"]
+        description: Independent System Operator.
+        expr: ISO
+        data_type: TEXT
+
+      - name: node_name
+        synonyms: ["pnode", "hub name", "name"]
+        description: Price node or hub name.
+        expr: PNODENAME
+        data_type: TEXT
+        sample_values: ["HB_WEST", "WESTERN HUB", "ILLINOIS.HUB", "NP15"]
+
+      - name: zone
+        synonyms: ["region"]
+        description: Zone associated with the node.
+        expr: ZONE
+        data_type: TEXT
+
+      - name: node_type
+        synonyms: ["type"]
+        description: Type of price point (HUB, NODE, ZONE, etc).
+        expr: NODETYPE
+        data_type: TEXT
+        sample_values: ["HUB", "NODE", "ZONE", "AGGREGATE"]
+
+      - name: status
+        description: Active or inactive status.
+        expr: STATUS
+        data_type: TEXT
+
+  # ============================================
+  # DART_LOADS - Load Data
+  # ============================================
+  - name: dart_loads
+    description: Real-time and day-ahead load data by zone across ISOs.
+    base_table:
+      database: YES_ENERGY_FOUNDATION_DATA
+      schema: FOUNDATION
+      table: DART_LOADS
+    primary_key:
+      columns: [datetime, objectid]
+
+    dimensions:
+      - name: objectid
+        synonyms: ["zone_id"]
+        description: Yes Energy object identifier for load zone.
+        expr: OBJECTID
+        data_type: NUMBER
+
+      - name: timezone
+        description: Timezone of the load data.
+        expr: TIMEZONE
+        data_type: TEXT
+
+    time_dimensions:
+      - name: datetime
+        synonyms: ["time", "timestamp", "hour"]
+        description: Timestamp of the load observation.
+        expr: DATETIME
+        data_type: TIMESTAMP
+
+      - name: date
+        synonyms: ["day"]
+        description: Date of observation.
+        expr: DATE(DATETIME)
+        data_type: DATE
+
+    facts:
+      - name: rt_load
+        synonyms: ["real time load", "actual load", "load"]
+        description: Real-time load in MW.
+        expr: RTLOAD
+        data_type: NUMBER
+
+      - name: da_load
+        synonyms: ["day ahead load", "forecast load"]
+        description: Day-ahead forecast load in MW.
+        expr: DALOAD
+        data_type: NUMBER
+
+    metrics:
+      - name: total_load
+        synonyms: ["system load"]
+        description: Total real-time load.
+        expr: SUM(dart_loads.RTLOAD)
+
+      - name: peak_load
+        synonyms: ["max load"]
+        description: Peak real-time load.
+        expr: MAX(dart_loads.RTLOAD)
+
+      - name: avg_load
+        description: Average real-time load.
+        expr: AVG(dart_loads.RTLOAD)
+
+  # ============================================
+  # LOAD_ZONES - Zone Reference
+  # ============================================
+  - name: load_zones
+    description: Reference table for load zones across ISOs.
+    base_table:
+      database: YES_ENERGY_FOUNDATION_DATA
+      schema: FOUNDATION
+      table: LOAD_ZONES
+    primary_key:
+      columns: [objectid]
+
+    dimensions:
+      - name: objectid
+        description: Yes Energy object identifier.
+        expr: OBJECTID
+        data_type: NUMBER
+
+      - name: iso
+        synonyms: ["market", "rto"]
+        description: Independent System Operator.
+        expr: ISO
+        data_type: TEXT
+
+      - name: zone_name
+        synonyms: ["zone", "name"]
+        description: Zone name.
+        expr: ZONENAME
+        data_type: TEXT
+
+      - name: zone_type
+        synonyms: ["type"]
+        description: Type of zone (RTO, ZONE, WEATHER ZONE, etc).
+        expr: ZONETYPE
+        data_type: TEXT
+
+      - name: status
+        description: Active or inactive status.
+        expr: STATUS
+        data_type: TEXT
+
+  # ============================================
+  # IIR_OUTAGES - Outage Data
+  # ============================================
+  - name: outages
+    description: Planned and forced outages from IIR (Industrial Info Resources).
+    base_table:
+      database: YES_ENERGY_FOUNDATION_DATA
+      schema: FOUNDATION
+      table: IIR_OUTAGES
+    primary_key:
+      columns: [outage_id]
+
+    dimensions:
+      - name: outage_id
+        description: Unique outage identifier.
+        expr: OUTAGE_ID
+        data_type: NUMBER
+
+      - name: objectid
+        synonyms: ["unit_id", "plant_id"]
+        description: Yes Energy object identifier for the unit.
+        expr: OBJECTID
+        data_type: NUMBER
+
+      - name: outage_type
+        synonyms: ["type"]
+        description: Type of outage (PLANNED, FORCED, UNPLANNED, etc).
+        expr: OUTAGE_TYPE
+        data_type: TEXT
+        sample_values: ["PLANNED", "FORCED", "UNPLANNED", "MAINTENANCE"]
+
+      - name: outage_state
+        synonyms: ["state", "status"]
+        description: Current state of the outage.
+        expr: OUTAGE_STATE
+        data_type: TEXT
+
+      - name: outage_cause
+        synonyms: ["cause", "reason"]
+        description: Cause of the outage.
+        expr: OUTAGE_CAUSE
+        data_type: TEXT
+
+      - name: comments
+        synonyms: ["notes", "description"]
+        description: Additional comments about the outage.
+        expr: COMMENTS
+        data_type: TEXT
+
+    time_dimensions:
+      - name: start_date
+        synonyms: ["outage_start", "begin"]
+        description: Start date of the outage.
+        expr: STARTDATE
+        data_type: TIMESTAMP
+
+      - name: end_date
+        synonyms: ["outage_end", "finish"]
+        description: End date of the outage.
+        expr: ENDDATE
+        data_type: TIMESTAMP
+
+      - name: delivery_date
+        description: Date the outage data was delivered/reported.
+        expr: DELIVERY_DATE
+        data_type: TIMESTAMP
+
+    facts:
+      - name: duration
+        synonyms: ["length", "hours"]
+        description: Duration of outage in hours.
+        expr: DURATION
+        data_type: NUMBER
+
+      - name: capacity_offline
+        synonyms: ["offline capacity", "mw offline", "derated capacity"]
+        description: Capacity offline in MW.
+        expr: CAPACITY_OFFLINE
+        data_type: NUMBER
+
+    metrics:
+      - name: total_offline_capacity
+        description: Total capacity offline.
+        expr: SUM(outages.CAPACITY_OFFLINE)
+
+      - name: outage_count
+        description: Number of outages.
+        expr: COUNT(*)
+
+      - name: avg_duration
+        description: Average outage duration in hours.
+        expr: AVG(outages.DURATION)
+
+# ============================================
+# RELATIONSHIPS
+# ============================================
+relationships:
+  - name: prices_to_nodes
+    left_table: dart_prices
+    right_table: price_nodes
+    relationship_columns:
+      - left_column: OBJECTID
+        right_column: OBJECTID
+
+  - name: loads_to_zones
+    left_table: dart_loads
+    right_table: load_zones
+    relationship_columns:
+      - left_column: OBJECTID
+        right_column: OBJECTID
+
+# ============================================
+# VERIFIED QUERIES
+# ============================================
+verified_queries:
+  - name: west_hub_5x16
+    question: "What did West Hub 5x16 clear yesterday?"
+    use_as_onboarding_question: true
+    sql: |
+      WITH latest_full_day AS (
+        SELECT MAX(DATE(DATETIME)) as max_date
+        FROM __dart_prices
+        WHERE OBJECTID = 10000697080
+          AND RTLMP IS NOT NULL
+        HAVING COUNT(*) >= 16
+      )
+      SELECT 
+        DATE(p.DATETIME) as trade_date,
+        DAYNAME(p.DATETIME) as day_of_week,
+        ROUND(AVG(CASE WHEN HOUR(p.DATETIME) BETWEEN 6 AND 21 
+                       AND DAYOFWEEK(p.DATETIME) BETWEEN 1 AND 5 
+                  THEN p.DALMP END), 2) as da_5x16_price,
+        ROUND(AVG(CASE WHEN HOUR(p.DATETIME) BETWEEN 6 AND 21 
+                       AND DAYOFWEEK(p.DATETIME) BETWEEN 1 AND 5 
+                  THEN p.RTLMP END), 2) as rt_5x16_price,
+        COUNT(*) as hours
+      FROM __dart_prices p
+      CROSS JOIN latest_full_day lfd
+      WHERE p.OBJECTID = 10000697080
+        AND DATE(p.DATETIME) = lfd.max_date
+      GROUP BY DATE(p.DATETIME), DAYNAME(p.DATETIME)
+
+  - name: pjm_rto_peak_load
+    question: "What are the top 5 PJM RTO load values and hours over the last 5 years?"
+    use_as_onboarding_question: true
+    sql: |
+      SELECT 
+        DATE(DATETIME) as date,
+        HOUR(DATETIME) + 1 as hour_ending,
+        DAYNAME(DATETIME) as day_of_week,
+        ROUND(RTLOAD, 0) as load_mw
+      FROM __dart_loads
+      WHERE OBJECTID = 10000002572
+        AND DATETIME >= DATEADD('year', -5, CURRENT_DATE())
+        AND RTLOAD IS NOT NULL
+      ORDER BY RTLOAD DESC
+      LIMIT 5
+
+  - name: hub_prices_comparison
+    question: "Compare Western Hub vs ERCOT West Hub prices this week"
+    sql: |
+      SELECT 
+        pn.PNODENAME as hub,
+        pn.ISO,
+        DATE(p.DATETIME) as trade_date,
+        ROUND(AVG(p.DALMP), 2) as avg_da_price,
+        ROUND(AVG(p.RTLMP), 2) as avg_rt_price,
+        ROUND(MAX(p.RTLMP), 2) as peak_rt_price
+      FROM __dart_prices p
+      JOIN __price_nodes pn ON p.OBJECTID = pn.OBJECTID
+      WHERE pn.PNODENAME IN ('WESTERN HUB', 'HB_WEST')
+        AND p.DATETIME >= DATEADD('day', -7, CURRENT_DATE())
+      GROUP BY pn.PNODENAME, pn.ISO, DATE(p.DATETIME)
+      ORDER BY trade_date DESC, hub
+
+  - name: current_outages
+    question: "What are the current outages?"
+    use_as_onboarding_question: true
+    sql: |
+      SELECT 
+        o.OUTAGE_TYPE,
+        o.OUTAGE_STATE,
+        COUNT(*) as outage_count,
+        ROUND(SUM(o.CAPACITY_OFFLINE), 0) as total_mw_offline
+      FROM __outages o
+      WHERE o.STARTDATE <= CURRENT_TIMESTAMP()
+        AND (o.ENDDATE >= CURRENT_TIMESTAMP() OR o.ENDDATE IS NULL)
+      GROUP BY o.OUTAGE_TYPE, o.OUTAGE_STATE
+      ORDER BY total_mw_offline DESC
+
+  - name: ercot_load_by_zone
+    question: "What is the current ERCOT load by zone?"
+    sql: |
+      SELECT 
+        z.ZONENAME as zone,
+        ROUND(l.RTLOAD, 0) as rt_load_mw,
+        ROUND(l.DALOAD, 0) as da_load_mw,
+        l.DATETIME
+      FROM __dart_loads l
+      JOIN __load_zones z ON l.OBJECTID = z.OBJECTID
+      WHERE z.ISO = 'ERCOT' 
+        AND z.ZONETYPE = 'ZONE'
+        AND l.DATETIME = (
+          SELECT MAX(DATETIME) FROM YES_ENERGY_FOUNDATION_DATA.FOUNDATION.DART_LOADS
+          WHERE OBJECTID = l.OBJECTID
+        )
+      ORDER BY l.RTLOAD DESC
+
+  - name: iso_price_summary
+    question: "Show me a price summary across all ISOs"
+    sql: |
+      SELECT 
+        pn.ISO,
+        pn.PNODENAME as hub,
+        ROUND(AVG(p.DALMP), 2) as avg_da_price,
+        ROUND(AVG(p.RTLMP), 2) as avg_rt_price,
+        ROUND(MAX(p.RTLMP), 2) as peak_rt,
+        ROUND(MIN(p.RTLMP), 2) as min_rt
+      FROM __dart_prices p
+      JOIN __price_nodes pn ON p.OBJECTID = pn.OBJECTID
+      WHERE pn.NODETYPE = 'HUB'
+        AND pn.ISO IN ('ERCOT', 'PJMISO', 'MISO', 'CAISO', 'NYISO', 'NEISO', 'SPP')
+        AND p.DATETIME >= DATEADD('day', -1, CURRENT_DATE())
+      GROUP BY pn.ISO, pn.PNODENAME
+      ORDER BY pn.ISO, avg_rt_price DESC
+
+# ============================================
+# CUSTOM INSTRUCTIONS
+# ============================================
+custom_instructions: >
+  This semantic model covers Yes Energy power market data across North American ISOs.
+  
+  Key ISOs/RTOs covered:
+  - ERCOT: Texas (HB_WEST, HB_HOUSTON, HB_NORTH, HB_SOUTH)
+  - PJM: Mid-Atlantic/Midwest (WESTERN HUB, EASTERN HUB, AEP GEN HUB)
+  - MISO: Midwest (ILLINOIS.HUB, INDIANA.HUB, MICHIGAN.HUB, MINN.HUB)
+  - CAISO: California (NP15, SP15, ZP26)
+  - NYISO: New York
+  - ISO-NE/NEISO: New England (.H.INTERNAL_HUB)
+  - SPP: Southwest Power Pool
+  
+  Price Products (5x16 = Peak Hours):
+  - 5x16: Weekday peak hours (HE7-HE22, Mon-Fri) - most liquid product
+  - 2x16: Weekend peak hours
+  - 7x8: Off-peak hours (HE1-HE6, HE23-HE24)
+  - ATC (Around-the-Clock): All hours
+  
+  Important Hub ObjectIDs:
+  - ERCOT HB_WEST: 10000697080
+  - ERCOT HB_HOUSTON: 10000697077
+  - ERCOT HB_NORTH: 10000697078
+  - ERCOT HB_SOUTH: 10000697079
+  - PJM WESTERN HUB: 51288
+  - PJM EASTERN HUB: 51217
+  
+  When calculating 5x16 prices:
+  - Filter to HOUR(DATETIME) BETWEEN 6 AND 21 (for HE7-HE22)
+  - Filter to DAYOFWEEK(DATETIME) BETWEEN 1 AND 5 (Mon-Fri)
+  
+  Load Zone ObjectIDs (RTO level):
+  - ERCOT RTO: 10000712973
+  - PJM RTO COMBINED: 10000002572
+  - PJM MID-ATLANTIC: 10000002596
+  - PJM WESTERN: 10000002573
+  
+  For outage queries, join IIR_OUTAGES with IIR_UNITS to get unit/plant details.

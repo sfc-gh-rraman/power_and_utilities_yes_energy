@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 550" role="img" aria-labelledby="fig5-title fig5-desc">
+  <title id="fig5-title">Why Snowflake</title>
+  <desc id="fig5-desc">Four pillars of the Snowflake solution (Unified Data Platform, Native AI/ML, Secure Collaboration, Enterprise Governance) converging to create the VOLT Power Intelligence Agent</desc>
+  
+  <defs>
+    <style>
+      :root {
+        --bg-primary: #FFFFFF;
+        --bg-secondary: #F8FAFC;
+        --text-primary: #000000;
+        --text-secondary: #8A999E;
+        --accent-blue: #29B5E8;
+        --accent-star: #71D3DC;
+        --accent-orange: #FF9F36;
+        --accent-purple: #7D44CF;
+        --shadow: rgba(0,0,0,0.08);
+        --node-stroke: #E2E8F0;
+        --pillar-bg: #EFF8FF;
+      }
+      
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg-primary: #000000;
+          --bg-secondary: #24323D;
+          --text-primary: #FFFFFF;
+          --text-secondary: #8A999E;
+          --accent-blue: #29B5E8;
+          --accent-star: #71D3DC;
+          --accent-orange: #FF9F36;
+          --accent-purple: #7D44CF;
+          --shadow: rgba(0,0,0,0.3);
+          --node-stroke: #11567F;
+          --pillar-bg: #0A2540;
+        }
+      }
+      
+      .subgraph {
+        fill: var(--pillar-bg);
+        stroke: var(--accent-blue);
+        stroke-width: 2px;
+        filter: drop-shadow(3px 3px 6px var(--shadow));
+      }
+      
+      .node rect {
+        fill: var(--bg-primary);
+        stroke: var(--node-stroke);
+        stroke-width: 1.5px;
+        filter: drop-shadow(2px 2px 3px var(--shadow));
+      }
+      
+      .node.summary rect {
+        fill: var(--accent-star);
+        stroke: var(--accent-star);
+      }
+      
+      .node.summary text {
+        fill: white;
+        font-weight: 600;
+      }
+      
+      .node.value rect {
+        fill: var(--accent-blue);
+        stroke: var(--accent-blue);
+        filter: drop-shadow(6px 6px 12px var(--shadow));
+      }
+      
+      .node.value text {
+        fill: white;
+        font-weight: 700;
+      }
+      
+      .node text {
+        fill: var(--text-primary);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        font-size: 12px;
+        text-anchor: middle;
+      }
+      
+      .subgraph-title {
+        font-size: 15px;
+        font-weight: 700;
+        fill: var(--text-primary);
+      }
+      
+      .icon {
+        font-size: 28px;
+      }
+      
+      .edge path {
+        stroke: var(--accent-blue);
+        stroke-width: 3px;
+        fill: none;
+        opacity: 0.6;
+      }
+      
+      .edge polygon {
+        fill: var(--accent-blue);
+        opacity: 0.6;
+      }
+    </style>
+    
+    <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <polygon points="0 0, 12 3, 0 6"/>
+    </marker>
+  </defs>
+  
+  <!-- Pillar 1: Unified Data Platform -->
+  <rect class="subgraph" x="30" y="20" width="240" height="240" rx="5"/>
+  <text class="subgraph-title" x="150" y="45">Unified Data Platform</text>
+  <text class="icon" x="150" y="80" text-anchor="middle">⚡</text>
+  
+  <g class="node">
+    <rect x="60" y="95" width="180" height="30" rx="3"/>
+    <text x="150" y="115">Yes Energy (All ISOs)</text>
+  </g>
+  <g class="node">
+    <rect x="60" y="135" width="180" height="30" rx="3"/>
+    <text x="150" y="155">ERCOT Market Data</text>
+  </g>
+  <g class="node">
+    <rect x="60" y="175" width="180" height="30" rx="3"/>
+    <text x="150" y="195">ML Predictions</text>
+  </g>
+  <g class="node summary">
+    <rect x="70" y="215" width="160" height="35" rx="3"/>
+    <text x="150" y="237">Multi-ISO Intelligence</text>
+  </g>
+  
+  <!-- Pillar 2: Native AI/ML -->
+  <rect class="subgraph" x="310" y="20" width="240" height="240" rx="5"/>
+  <text class="subgraph-title" x="430" y="45">Native AI/ML</text>
+  <text class="icon" x="430" y="80" text-anchor="middle">🤖</text>
+  
+  <g class="node">
+    <rect x="340" y="95" width="180" height="30" rx="3"/>
+    <text x="430" y="115">Cortex Analyst</text>
+  </g>
+  <g class="node">
+    <rect x="340" y="135" width="180" height="30" rx="3"/>
+    <text x="430" y="155">Cortex Search</text>
+  </g>
+  <g class="node">
+    <rect x="340" y="175" width="180" height="30" rx="3"/>
+    <text x="430" y="195">4CP ML Model</text>
+  </g>
+  <g class="node summary">
+    <rect x="350" y="215" width="160" height="35" rx="3"/>
+    <text x="430" y="237">Natural Language</text>
+  </g>
+  
+  <!-- Pillar 3: Real-Time Analytics -->
+  <rect class="subgraph" x="590" y="20" width="240" height="240" rx="5"/>
+  <text class="subgraph-title" x="710" y="45">Real-Time Analytics</text>
+  <text class="icon" x="710" y="80" text-anchor="middle">📊</text>
+  
+  <g class="node">
+    <rect x="620" y="95" width="180" height="30" rx="3"/>
+    <text x="710" y="115">5x16 Price Products</text>
+  </g>
+  <g class="node">
+    <rect x="620" y="135" width="180" height="30" rx="3"/>
+    <text x="710" y="155">Load Forecasting</text>
+  </g>
+  <g class="node">
+    <rect x="620" y="175" width="180" height="30" rx="3"/>
+    <text x="710" y="195">Peak Detection</text>
+  </g>
+  <g class="node summary">
+    <rect x="630" y="215" width="160" height="35" rx="3"/>
+    <text x="710" y="237">Seconds vs Hours</text>
+  </g>
+  
+  <!-- Pillar 4: Cost Optimization -->
+  <rect class="subgraph" x="870" y="20" width="240" height="240" rx="5"/>
+  <text class="subgraph-title" x="990" y="45">Cost Optimization</text>
+  <text class="icon" x="990" y="80" text-anchor="middle">💰</text>
+  
+  <g class="node">
+    <rect x="900" y="95" width="180" height="30" rx="3"/>
+    <text x="990" y="115">4CP Early Warning</text>
+  </g>
+  <g class="node">
+    <rect x="900" y="135" width="180" height="30" rx="3"/>
+    <text x="990" y="155">Transmission Savings</text>
+  </g>
+  <g class="node">
+    <rect x="900" y="175" width="180" height="30" rx="3"/>
+    <text x="990" y="195">Hidden Discovery</text>
+  </g>
+  <g class="node summary">
+    <rect x="910" y="215" width="160" height="35" rx="3"/>
+    <text x="990" y="237">$2.8M Annual Value</text>
+  </g>
+  
+  <!-- Central Value Node -->
+  <g class="node value">
+    <rect x="375" y="350" width="350" height="120" rx="8"/>
+    <text x="550" y="395" style="font-size: 22px;">VOLT Power</text>
+    <text x="550" y="425" style="font-size: 22px;">Intelligence Platform</text>
+    <text x="550" y="455" style="font-size: 13px; opacity: 0.9;">AI-Powered Market Intelligence Across All ISOs</text>
+  </g>
+  
+  <!-- Curved arrows from pillars to central value -->
+  <path class="edge" d="M 150 260 Q 200 350 375 410" marker-end="url(#arrowhead)"/>
+  <path class="edge" d="M 430 260 Q 450 310 450 350" marker-end="url(#arrowhead)"/>
+  <path class="edge" d="M 710 260 Q 680 310 650 350" marker-end="url(#arrowhead)"/>
+  <path class="edge" d="M 990 260 Q 900 350 725 410" marker-end="url(#arrowhead)"/>
+</svg>

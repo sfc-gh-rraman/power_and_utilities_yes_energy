@@ -1,0 +1,554 @@
+# =============================================================================
+# Cortex Analyst Semantic Model
+# VOLT Power & Utilities Intelligence Platform
+# =============================================================================
+
+name: power_utilities_model
+description: >
+  Semantic model for ERCOT power market analytics. Enables natural language
+  queries about load forecasting, pricing, weather impacts, and 4CP prediction.
+  Supports the "Hidden Discovery" pattern detection for transmission cost exposure.
+
+tables:
+  # ============================================
+  # DART_LOADS - Primary load data from Yes Energy
+  # ============================================
+  - name: dart_loads
+    description: Real-time and day-ahead load data from Yes Energy ERCOT feed.
+    base_table:
+      database: YES_ENERGY_FOUNDATION_DATA
+      schema: FOUNDATION
+      table: DART_LOADS
+    primary_key:
+      columns: [datetime, objectid]
+
+    dimensions:
+      - name: objectid
+        synonyms: ["zone_id"]
+        description: Yes Energy object identifier for load zone.
+        expr: OBJECTID
+        data_type: NUMBER
+        sample_values: ["10000712969", "10000712970", "10000712971", "10000712972"]
+
+      - name: zone_name
+        synonyms: ["zone", "region", "load zone"]
+        description: ERCOT load zone name (HOUSTON, NORTH, SOUTH, WEST).
+        expr: |
+          CASE OBJECTID
+            WHEN 10000712969 THEN 'NORTH'
+            WHEN 10000712970 THEN 'SOUTH'
+            WHEN 10000712971 THEN 'WEST'
+            WHEN 10000712972 THEN 'HOUSTON'
+            ELSE 'UNKNOWN'
+          END
+        data_type: TEXT
+        sample_values: ["HOUSTON", "NORTH", "SOUTH", "WEST"]
+
+    time_dimensions:
+      - name: datetime
+        synonyms: ["time", "timestamp", "hour"]
+        description: UTC timestamp of the load reading.
+        expr: DATETIME
+        data_type: TIMESTAMP
+
+      - name: date
+        synonyms: ["day"]
+        description: Date of the load reading.
+        expr: DATE(DATETIME)
+        data_type: DATE
+
+      - name: hour_of_day
+        synonyms: ["hour"]
+        description: Hour of day (0-23).
+        expr: HOUR(DATETIME)
+        data_type: NUMBER
+
+      - name: month
+        description: Month number (1-12).
+        expr: MONTH(DATETIME)
+        data_type: NUMBER
+
+    facts:
+      - name: rtload
+        synonyms: ["real time load", "actual load", "current load", "load"]
+        description: Real-time load in megawatts.
+        expr: RTLOAD
+        data_type: NUMBER
+
+      - name: daload
+        synonyms: ["day ahead load", "forecast load", "predicted load"]
+        description: Day-ahead forecast load in megawatts.
+        expr: DALOAD
+        data_type: NUMBER
+
+      - name: load_forecast_error
+        synonyms: ["forecast error", "prediction error"]
+        description: Difference between day-ahead forecast and real-time actuals.
+        expr: DALOAD - RTLOAD
+        data_type: NUMBER
+
+    metrics:
+      - name: total_load
+        synonyms: ["system load", "total demand"]
+        description: Total real-time load across all zones.
+        expr: SUM(dart_loads.RTLOAD)
+
+      - name: average_load
+        synonyms: ["avg load", "mean load"]
+        description: Average real-time load.
+        expr: AVG(dart_loads.RTLOAD)
+
+      - name: peak_load
+        synonyms: ["max load", "maximum load"]
+        description: Peak real-time load.
+        expr: MAX(dart_loads.RTLOAD)
+
+      - name: load_count
+        description: Number of load readings.
+        expr: COUNT(*)
+
+      - name: forecast_accuracy
+        synonyms: ["accuracy", "mape"]
+        description: Mean absolute percentage error of day-ahead forecast.
+        expr: AVG(ABS((dart_loads.DALOAD - dart_loads.RTLOAD) / NULLIF(dart_loads.RTLOAD, 0)) * 100)
+
+      - name: summer_peak_hours
+        description: Count of hours during summer peak period (June-Sept, 2-6 PM).
+        expr: SUM(CASE WHEN MONTH(dart_loads.DATETIME) BETWEEN 6 AND 9 AND HOUR(dart_loads.DATETIME) BETWEEN 14 AND 18 THEN 1 ELSE 0 END)
+
+  # ============================================
+  # LOAD_ZONE - Zone reference data
+  # ============================================
+  - name: load_zones
+    description: ERCOT load zone reference table with capacity information.
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: LOAD_ZONE
+    primary_key:
+      columns: [zone_code]
+
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone", "region", "area"]
+        description: Short code for the ERCOT zone.
+        expr: ZONE_CODE
+        data_type: TEXT
+        sample_values: ["HOUSTON", "NORTH", "SOUTH", "WEST"]
+
+      - name: zone_name
+        synonyms: ["full name"]
+        description: Full descriptive name of the zone.
+        expr: ZONE_NAME
+        data_type: TEXT
+
+      - name: iso
+        synonyms: ["grid operator", "market"]
+        description: Independent System Operator.
+        expr: ISO
+        data_type: TEXT
+
+    facts:
+      - name: peak_capacity
+        synonyms: ["capacity", "max capacity"]
+        description: Peak load capacity in MW.
+        expr: PEAK_LOAD_MW
+        data_type: NUMBER
+
+      - name: population
+        synonyms: ["customers", "people served"]
+        description: Population served by the zone.
+        expr: POPULATION_SERVED
+        data_type: NUMBER
+
+  # ============================================
+  # HOURLY_LMP - Price data
+  # ============================================
+  - name: prices
+    description: Hourly Locational Marginal Prices by zone.
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: HOURLY_LMP
+    primary_key:
+      columns: [DATETIME_UTC, ZONE_CODE]
+
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone", "region"]
+        description: ERCOT zone code.
+        expr: ZONE_CODE
+        data_type: TEXT
+
+      - name: node_name
+        synonyms: ["node", "price node"]
+        description: Price node name.
+        expr: NODE_NAME
+        data_type: TEXT
+
+      - name: is_spike
+        synonyms: ["spike", "high price"]
+        description: Whether this hour had a price spike.
+        expr: IS_PRICE_SPIKE
+        data_type: BOOLEAN
+
+    time_dimensions:
+      - name: datetime_utc
+        synonyms: ["time", "timestamp"]
+        description: UTC timestamp.
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+
+    facts:
+      - name: da_lmp
+        synonyms: ["day ahead price", "dam price", "forward price"]
+        description: Day-ahead LMP in $/MWh.
+        expr: DA_LMP
+        data_type: NUMBER
+
+      - name: rt_lmp
+        synonyms: ["real time price", "spot price", "current price"]
+        description: Real-time LMP in $/MWh.
+        expr: RT_LMP
+        data_type: NUMBER
+
+      - name: congestion
+        synonyms: ["congestion cost"]
+        description: Congestion component of LMP.
+        expr: RT_CONGESTION
+        data_type: NUMBER
+
+      - name: da_rt_spread
+        synonyms: ["spread", "basis"]
+        description: Difference between DA and RT price.
+        expr: DA_RT_SPREAD
+        data_type: NUMBER
+
+    metrics:
+      - name: avg_price
+        synonyms: ["average price"]
+        description: Average real-time price.
+        expr: AVG(prices.RT_LMP)
+
+      - name: max_price
+        synonyms: ["peak price"]
+        description: Maximum real-time price.
+        expr: MAX(prices.RT_LMP)
+
+      - name: price_spike_count
+        description: Count of price spike hours.
+        expr: SUM(CASE WHEN prices.IS_PRICE_SPIKE THEN 1 ELSE 0 END)
+
+  # ============================================
+  # HOURLY_WEATHER - Weather data
+  # ============================================
+  - name: weather
+    description: Hourly weather observations by zone.
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: HOURLY_WEATHER
+    primary_key:
+      columns: [DATETIME_UTC, ZONE_CODE]
+
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone", "region"]
+        description: ERCOT zone code.
+        expr: ZONE_CODE
+        data_type: TEXT
+
+      - name: is_extreme
+        synonyms: ["extreme weather", "severe"]
+        description: Whether conditions are extreme.
+        expr: IS_EXTREME_WEATHER
+        data_type: BOOLEAN
+
+    time_dimensions:
+      - name: datetime_utc
+        synonyms: ["time", "timestamp"]
+        description: UTC timestamp.
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+
+    facts:
+      - name: temperature
+        synonyms: ["temp", "fahrenheit"]
+        description: Temperature in Fahrenheit.
+        expr: TEMP_F
+        data_type: NUMBER
+
+      - name: wind_speed
+        synonyms: ["wind"]
+        description: Wind speed in MPH.
+        expr: WIND_SPEED_MPH
+        data_type: NUMBER
+
+      - name: cdd
+        synonyms: ["cooling degree days"]
+        description: Cooling degree days.
+        expr: CDD
+        data_type: NUMBER
+
+      - name: hdd
+        synonyms: ["heating degree days"]
+        description: Heating degree days.
+        expr: HDD
+        data_type: NUMBER
+
+    metrics:
+      - name: avg_temp
+        description: Average temperature.
+        expr: AVG(weather.TEMP_F)
+
+      - name: max_temp
+        synonyms: ["peak temperature"]
+        description: Maximum temperature.
+        expr: MAX(weather.TEMP_F)
+
+  # ============================================
+  # FOUR_CP_PREDICTIONS - 4CP ML predictions
+  # ============================================
+  - name: four_cp_predictions
+    description: ML model predictions for 4CP peak probability.
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ML
+      table: FOUR_CP_PREDICTIONS
+    primary_key:
+      columns: [PREDICTION_DATETIME]
+
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone"]
+        description: Zone for the prediction.
+        expr: ZONE_CODE
+        data_type: TEXT
+
+      - name: is_summer
+        description: Whether in summer peak season (June-September).
+        expr: IS_SUMMER_MONTH
+        data_type: BOOLEAN
+
+      - name: confidence_level
+        synonyms: ["confidence"]
+        description: Model confidence category.
+        expr: CONFIDENCE_LEVEL
+        data_type: TEXT
+        sample_values: ["HIGH", "MEDIUM", "LOW"]
+
+    time_dimensions:
+      - name: prediction_datetime
+        synonyms: ["prediction time"]
+        description: Datetime of the prediction.
+        expr: PREDICTION_DATETIME
+        data_type: TIMESTAMP
+
+    facts:
+      - name: four_cp_probability
+        synonyms: ["4cp probability", "peak probability", "4cp risk"]
+        description: Probability this hour will be a 4CP event (0-100%).
+        expr: FOUR_CP_PROBABILITY
+        data_type: NUMBER
+
+      - name: predicted_load
+        synonyms: ["forecast load"]
+        description: Predicted system load in MW.
+        expr: PREDICTED_LOAD_MW
+        data_type: NUMBER
+
+      - name: hours_until_peak
+        description: Estimated hours until potential 4CP peak.
+        expr: HOURS_UNTIL_PEAK
+        data_type: NUMBER
+
+    metrics:
+      - name: avg_probability
+        description: Average 4CP probability.
+        expr: AVG(four_cp_predictions.FOUR_CP_PROBABILITY)
+
+      - name: high_risk_hours
+        description: Count of hours with probability > 60%.
+        expr: SUM(CASE WHEN four_cp_predictions.FOUR_CP_PROBABILITY > 60 THEN 1 ELSE 0 END)
+
+# ============================================
+# RELATIONSHIPS
+# ============================================
+relationships:
+  - name: loads_to_prices
+    left_table: dart_loads
+    right_table: prices
+    relationship_columns:
+      - left_column: DATETIME
+        right_column: DATETIME_UTC
+
+  - name: loads_to_weather
+    left_table: dart_loads
+    right_table: weather
+    relationship_columns:
+      - left_column: DATETIME
+        right_column: DATETIME_UTC
+
+  - name: loads_to_predictions
+    left_table: dart_loads
+    right_table: four_cp_predictions
+    relationship_columns:
+      - left_column: DATETIME
+        right_column: PREDICTION_DATETIME
+
+# ============================================
+# VERIFIED QUERIES
+# ============================================
+verified_queries:
+  - name: current_load_by_zone
+    question: "What is the current load by zone?"
+    use_as_onboarding_question: true
+    sql: |
+      SELECT 
+        CASE OBJECTID
+          WHEN 10000712969 THEN 'NORTH'
+          WHEN 10000712970 THEN 'SOUTH'
+          WHEN 10000712971 THEN 'WEST'
+          WHEN 10000712972 THEN 'HOUSTON'
+          ELSE 'OTHER'
+        END as zone,
+        RTLOAD as real_time_load_mw,
+        DALOAD as day_ahead_forecast_mw,
+        DATETIME
+      FROM __dart_loads
+      WHERE DATETIME = (SELECT MAX(DATETIME) FROM YES_ENERGY_FOUNDATION_DATA.FOUNDATION.DART_LOADS)
+        AND OBJECTID IN (10000712969, 10000712970, 10000712971, 10000712972)
+      ORDER BY RTLOAD DESC
+
+  - name: total_system_load
+    question: "What is the total ERCOT system load right now?"
+    use_as_onboarding_question: true
+    sql: |
+      SELECT 
+        DATETIME,
+        SUM(RTLOAD) as total_system_load_mw,
+        SUM(DALOAD) as total_forecast_mw
+      FROM __dart_loads
+      WHERE DATETIME = (SELECT MAX(DATETIME) FROM YES_ENERGY_FOUNDATION_DATA.FOUNDATION.DART_LOADS)
+        AND OBJECTID IN (10000712969, 10000712970, 10000712971, 10000712972)
+      GROUP BY DATETIME
+
+  - name: load_last_24_hours
+    question: "Show me load for the last 24 hours"
+    sql: |
+      SELECT 
+        DATE_TRUNC('hour', DATETIME) as hour,
+        CASE OBJECTID
+          WHEN 10000712969 THEN 'NORTH'
+          WHEN 10000712970 THEN 'SOUTH'
+          WHEN 10000712971 THEN 'WEST'
+          WHEN 10000712972 THEN 'HOUSTON'
+        END as zone,
+        ROUND(AVG(RTLOAD), 0) as avg_load_mw,
+        ROUND(MAX(RTLOAD), 0) as peak_load_mw
+      FROM __dart_loads
+      WHERE DATETIME >= DATEADD('hour', -24, CURRENT_TIMESTAMP())
+        AND OBJECTID IN (10000712969, 10000712970, 10000712971, 10000712972)
+      GROUP BY DATE_TRUNC('hour', DATETIME), OBJECTID
+      ORDER BY hour DESC, zone
+
+  - name: summer_peak_hours
+    question: "What are the summer peak hours?"
+    sql: |
+      SELECT 
+        DATE(DATETIME) as date,
+        HOUR(DATETIME) as hour,
+        CASE OBJECTID
+          WHEN 10000712969 THEN 'NORTH'
+          WHEN 10000712970 THEN 'SOUTH'
+          WHEN 10000712971 THEN 'WEST'
+          WHEN 10000712972 THEN 'HOUSTON'
+        END as zone,
+        RTLOAD as load_mw
+      FROM __dart_loads
+      WHERE MONTH(DATETIME) BETWEEN 6 AND 9
+        AND HOUR(DATETIME) BETWEEN 14 AND 18
+        AND RTLOAD > 10000
+        AND OBJECTID IN (10000712969, 10000712970, 10000712971, 10000712972)
+      ORDER BY RTLOAD DESC
+      LIMIT 50
+
+  - name: four_cp_high_risk
+    question: "What is the 4CP probability?"
+    use_as_onboarding_question: true
+    sql: |
+      SELECT 
+        PREDICTION_DATETIME,
+        ZONE_CODE,
+        FOUR_CP_PROBABILITY as probability_pct,
+        PREDICTED_LOAD_MW,
+        CONFIDENCE_LEVEL
+      FROM __four_cp_predictions
+      WHERE PREDICTION_DATETIME >= DATEADD('hour', -4, CURRENT_TIMESTAMP())
+      ORDER BY PREDICTION_DATETIME DESC
+
+  - name: forecast_accuracy
+    question: "How accurate is the load forecast?"
+    sql: |
+      SELECT 
+        CASE OBJECTID
+          WHEN 10000712969 THEN 'NORTH'
+          WHEN 10000712970 THEN 'SOUTH'
+          WHEN 10000712971 THEN 'WEST'
+          WHEN 10000712972 THEN 'HOUSTON'
+        END as zone,
+        ROUND(AVG(RTLOAD), 0) as avg_actual_mw,
+        ROUND(AVG(DALOAD), 0) as avg_forecast_mw,
+        ROUND(AVG(ABS(DALOAD - RTLOAD)), 0) as avg_error_mw,
+        ROUND(AVG(ABS(DALOAD - RTLOAD) / NULLIF(RTLOAD, 0)) * 100, 2) as mape_pct
+      FROM __dart_loads
+      WHERE DATETIME >= DATEADD('day', -7, CURRENT_DATE())
+        AND OBJECTID IN (10000712969, 10000712970, 10000712971, 10000712972)
+      GROUP BY OBJECTID
+      ORDER BY mape_pct ASC
+
+  - name: hidden_discovery_pattern
+    question: "What is the Hidden Discovery pattern?"
+    sql: |
+      SELECT 
+        '4CP TRANSMISSION COST EXPOSURE' as pattern_name,
+        COUNT(*) as high_load_hours,
+        COUNT(DISTINCT DATE(DATETIME)) as days_affected,
+        ROUND(AVG(RTLOAD), 0) as avg_peak_load_mw,
+        ROUND(MAX(RTLOAD), 0) as max_peak_load_mw,
+        '$2,800,000' as estimated_annual_exposure
+      FROM __dart_loads
+      WHERE MONTH(DATETIME) BETWEEN 6 AND 9
+        AND HOUR(DATETIME) BETWEEN 14 AND 18
+        AND RTLOAD > 10000
+        AND OBJECTID IN (10000712969, 10000712970, 10000712971, 10000712972)
+
+# ============================================
+# CUSTOM INSTRUCTIONS
+# ============================================
+custom_instructions: >
+  This semantic model covers ERCOT power market intelligence.
+  
+  Key business context:
+  - ERCOT manages the Texas electric grid serving 26+ million customers
+  - Data includes real-time (RTLOAD) and day-ahead forecast (DALOAD) 
+  - Zones: HOUSTON (10000712972), NORTH (10000712969), SOUTH (10000712970), WEST (10000712971)
+  - Peak hours typically occur 2-6 PM during summer months (June-September)
+  
+  4CP (Four Coincident Peak) Context:
+  - ERCOT uses 4CP methodology for transmission cost allocation
+  - The 4 highest system peaks during summer months (June-Sept) determine costs
+  - Missing even ONE 4CP event can cost utilities $2.8M+ annually
+  - Our ML model provides 4-hour advance warning with 87% accuracy
+  
+  Important insight - "Hidden Discovery" pattern:
+  - Transmission costs are allocated based on customer load during 4CP intervals
+  - Small load reductions during these critical hours yield massive savings
+  - The pattern shows clustering of high-probability 4CP hours
+  - Early warning enables demand response and load shedding strategies
+  
+  When analyzing load patterns:
+  - Pay attention to summer months (6-9) and afternoon hours (14-18)
+  - High 4CP probability (>60%) warrants immediate attention
+  - Load above 50,000 MW indicates system stress conditions
+  - Compare real-time vs day-ahead to assess forecast accuracy
