@@ -1,0 +1,358 @@
+-- ============================================================================
+-- POWER & UTILITIES INTELLIGENCE PLATFORM - Analytics Views
+-- ============================================================================
+-- Datamart views for dashboards, reporting, and AI agents
+-- Pulls from ATOMIC tables and YES_ENERGY_FOUNDATION_DATA
+-- ============================================================================
+
+USE DATABASE POWER_UTILITIES_DB;
+USE SCHEMA ANALYTICS;
+
+-- ============================================================================
+-- MISSION CONTROL KPIs
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_REALTIME_GRID_STATUS AS
+SELECT
+    z.ZONE_CODE,
+    z.ZONE_NAME,
+    CURRENT_TIMESTAMP() AS AS_OF_TIME,
+    
+    -- Current Load
+    l.LOAD_MW AS CURRENT_LOAD_MW,
+    l.LOAD_FORECAST_MW AS FORECASTED_LOAD_MW,
+    l.LOAD_MW - l.LOAD_FORECAST_MW AS FORECAST_ERROR_MW,
+    ROUND(ABS(l.LOAD_MW - l.LOAD_FORECAST_MW) / NULLIF(l.LOAD_MW, 0) * 100, 2) AS FORECAST_ERROR_PCT,
+    
+    -- Current Prices
+    p.RT_LMP AS CURRENT_RT_LMP,
+    p.DA_LMP AS CURRENT_DA_LMP,
+    p.RT_LMP - p.DA_LMP AS DA_RT_SPREAD,
+    p.RT_CONGESTION AS CONGESTION_COMPONENT,
+    
+    -- Weather
+    w.TEMP_F AS CURRENT_TEMP_F,
+    w.WIND_SPEED_MPH,
+    w.CDD,
+    w.HDD,
+    
+    -- Status Indicators
+    CASE 
+        WHEN p.RT_LMP > 100 THEN 'HIGH'
+        WHEN p.RT_LMP > 50 THEN 'ELEVATED'
+        ELSE 'NORMAL'
+    END AS PRICE_STATUS,
+    CASE
+        WHEN ABS(l.LOAD_MW - l.LOAD_FORECAST_MW) / NULLIF(l.LOAD_MW, 0) > 0.05 THEN 'WARNING'
+        ELSE 'NORMAL'
+    END AS FORECAST_STATUS
+FROM ATOMIC.LOAD_ZONE z
+LEFT JOIN ATOMIC.HOURLY_LOAD l 
+    ON z.ZONE_CODE = l.ZONE_CODE 
+    AND l.DATETIME_UTC = DATE_TRUNC('hour', CURRENT_TIMESTAMP())
+LEFT JOIN ATOMIC.HOURLY_LMP p 
+    ON z.ZONE_CODE = p.ZONE_CODE 
+    AND p.DATETIME_UTC = DATE_TRUNC('hour', CURRENT_TIMESTAMP())
+LEFT JOIN ATOMIC.HOURLY_WEATHER w 
+    ON z.ZONE_CODE = w.ZONE_CODE 
+    AND w.DATETIME_UTC = DATE_TRUNC('hour', CURRENT_TIMESTAMP())
+WHERE z.IS_ACTIVE = TRUE;
+
+-- ============================================================================
+-- LOAD ANALYSIS
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_DAILY_LOAD_SUMMARY AS
+SELECT
+    ZONE_CODE,
+    DATE(DATETIME_UTC) AS LOAD_DATE,
+    
+    -- Load Metrics
+    ROUND(AVG(LOAD_MW), 2) AS AVG_LOAD_MW,
+    ROUND(MAX(LOAD_MW), 2) AS PEAK_LOAD_MW,
+    ROUND(MIN(LOAD_MW), 2) AS MIN_LOAD_MW,
+    ROUND(SUM(LOAD_MW), 2) AS TOTAL_MWH,
+    
+    -- Peak Hour
+    MAX_BY(HOUR(DATETIME_UTC), LOAD_MW) AS PEAK_HOUR,
+    
+    -- Forecast Accuracy
+    ROUND(AVG(ABS(FORECAST_ERROR_PCT)), 4) AS MAPE,
+    ROUND(SUM(CASE WHEN LOAD_MW > LOAD_FORECAST_MW THEN 1 ELSE 0 END) / COUNT(*) * 100, 2) AS PCT_UNDER_FORECAST,
+    
+    -- Load Shape
+    ROUND(MAX(LOAD_MW) / NULLIF(AVG(LOAD_MW), 0), 2) AS LOAD_FACTOR
+FROM ATOMIC.HOURLY_LOAD
+GROUP BY ZONE_CODE, DATE(DATETIME_UTC);
+
+CREATE OR REPLACE VIEW V_LOAD_FORECAST_PERFORMANCE AS
+SELECT
+    f.ZONE_CODE,
+    DATE(f.FORECAST_DATETIME) AS FORECAST_DATE,
+    f.MODEL_VERSION,
+    
+    COUNT(*) AS HOURS_FORECASTED,
+    ROUND(AVG(f.APE) * 100, 2) AS MAPE_PCT,
+    ROUND(SQRT(AVG(POWER(f.ABSOLUTE_ERROR_MW, 2))), 2) AS RMSE_MW,
+    ROUND(AVG(f.ABSOLUTE_ERROR_MW), 2) AS MAE_MW,
+    
+    ROUND(MAX(f.APE) * 100, 2) AS MAX_ERROR_PCT,
+    MAX_BY(f.FORECAST_DATETIME, f.APE) AS WORST_HOUR,
+    
+    ROUND(AVG(f.PREDICTED_LOAD_MW), 2) AS AVG_PREDICTED_MW,
+    ROUND(AVG(f.ACTUAL_LOAD_MW), 2) AS AVG_ACTUAL_MW
+FROM ML.LOAD_FORECAST_PREDICTION f
+WHERE f.ACTUAL_LOAD_MW IS NOT NULL
+GROUP BY f.ZONE_CODE, DATE(f.FORECAST_DATETIME), f.MODEL_VERSION;
+
+-- ============================================================================
+-- PRICE ANALYSIS
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_DAILY_PRICE_SUMMARY AS
+SELECT
+    ZONE_CODE,
+    DATE(DATETIME_UTC) AS PRICE_DATE,
+    
+    -- DA Prices
+    ROUND(AVG(DA_LMP), 2) AS AVG_DA_LMP,
+    ROUND(MAX(DA_LMP), 2) AS PEAK_DA_LMP,
+    ROUND(MIN(DA_LMP), 2) AS MIN_DA_LMP,
+    
+    -- RT Prices
+    ROUND(AVG(RT_LMP), 2) AS AVG_RT_LMP,
+    ROUND(MAX(RT_LMP), 2) AS PEAK_RT_LMP,
+    ROUND(MIN(RT_LMP), 2) AS MIN_RT_LMP,
+    
+    -- Volatility
+    ROUND(STDDEV(RT_LMP), 2) AS RT_PRICE_STDDEV,
+    ROUND((MAX(RT_LMP) - MIN(RT_LMP)), 2) AS RT_PRICE_RANGE,
+    
+    -- DA-RT Spread
+    ROUND(AVG(DA_LMP - RT_LMP), 2) AS AVG_DA_RT_SPREAD,
+    
+    -- Congestion
+    ROUND(AVG(ABS(RT_CONGESTION)), 2) AS AVG_CONGESTION,
+    ROUND(MAX(ABS(RT_CONGESTION)), 2) AS MAX_CONGESTION,
+    
+    -- Spike Count
+    SUM(CASE WHEN RT_LMP > 100 THEN 1 ELSE 0 END) AS HOURS_ABOVE_100,
+    SUM(CASE WHEN RT_LMP > 500 THEN 1 ELSE 0 END) AS HOURS_ABOVE_500,
+    SUM(CASE WHEN RT_LMP > 1000 THEN 1 ELSE 0 END) AS HOURS_ABOVE_1000
+FROM ATOMIC.HOURLY_LMP
+GROUP BY ZONE_CODE, DATE(DATETIME_UTC);
+
+CREATE OR REPLACE VIEW V_PRICE_SPIKE_ANALYSIS AS
+SELECT
+    e.EVENT_ID,
+    e.ZONE_CODE,
+    e.EVENT_START,
+    e.EVENT_END,
+    e.DURATION_HOURS,
+    e.PEAK_PRICE,
+    e.AVG_PRICE,
+    e.CONGESTION_COMPONENT,
+    e.PROBABLE_CAUSE,
+    e.SEVERITY,
+    
+    -- Weather at time of event
+    w.TEMP_F,
+    w.WIND_SPEED_MPH,
+    w.CDD,
+    w.HDD,
+    
+    -- Load at time of event
+    l.LOAD_MW,
+    l.FORECAST_ERROR_PCT
+FROM ATOMIC.PRICE_ANOMALY_EVENT e
+LEFT JOIN ATOMIC.HOURLY_WEATHER w 
+    ON e.ZONE_CODE = w.ZONE_CODE 
+    AND DATE_TRUNC('hour', e.EVENT_START) = w.DATETIME_UTC
+LEFT JOIN ATOMIC.HOURLY_LOAD l 
+    ON e.ZONE_CODE = l.ZONE_CODE 
+    AND DATE_TRUNC('hour', e.EVENT_START) = l.DATETIME_UTC;
+
+-- ============================================================================
+-- CONGESTION ANALYSIS (for CRR)
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_ZONE_CONGESTION_MATRIX AS
+WITH hourly_spreads AS (
+    SELECT
+        h.DATETIME_UTC,
+        h.ZONE_CODE AS SOURCE_ZONE,
+        s.ZONE_CODE AS SINK_ZONE,
+        h.RT_CONGESTION AS SOURCE_CONGESTION,
+        s.RT_CONGESTION AS SINK_CONGESTION,
+        s.RT_CONGESTION - h.RT_CONGESTION AS CONGESTION_SPREAD
+    FROM ATOMIC.HOURLY_LMP h
+    CROSS JOIN ATOMIC.HOURLY_LMP s
+    WHERE h.DATETIME_UTC = s.DATETIME_UTC
+    AND h.ZONE_CODE != s.ZONE_CODE
+)
+SELECT
+    SOURCE_ZONE,
+    SINK_ZONE,
+    DATE_TRUNC('month', DATETIME_UTC) AS MONTH,
+    
+    COUNT(*) AS HOURS,
+    ROUND(AVG(CONGESTION_SPREAD), 4) AS AVG_CONGESTION_SPREAD,
+    ROUND(STDDEV(CONGESTION_SPREAD), 4) AS CONGESTION_VOLATILITY,
+    
+    SUM(CASE WHEN CONGESTION_SPREAD > 0 THEN 1 ELSE 0 END) AS HOURS_POSITIVE_SPREAD,
+    SUM(CASE WHEN CONGESTION_SPREAD > 5 THEN 1 ELSE 0 END) AS HOURS_SIGNIFICANT_SPREAD,
+    
+    ROUND(SUM(CONGESTION_SPREAD), 2) AS TOTAL_CONGESTION_VALUE
+FROM hourly_spreads
+GROUP BY SOURCE_ZONE, SINK_ZONE, DATE_TRUNC('month', DATETIME_UTC);
+
+CREATE OR REPLACE VIEW V_CRR_PERFORMANCE AS
+SELECT
+    c.SOURCE_ZONE,
+    c.SINK_ZONE,
+    c.EFFECTIVE_DATE,
+    c.MW_QUANTITY,
+    c.AUCTION_PRICE,
+    c.SETTLEMENT_PRICE,
+    c.PNL,
+    c.HEDGE_EFFECTIVENESS,
+    
+    -- Monthly aggregation
+    DATE_TRUNC('month', c.EFFECTIVE_DATE) AS MONTH,
+    SUM(c.PNL) OVER (PARTITION BY c.SOURCE_ZONE, c.SINK_ZONE ORDER BY c.EFFECTIVE_DATE) AS CUMULATIVE_PNL
+FROM ATOMIC.CRR_POSITION c
+WHERE c.STATUS = 'Active';
+
+-- ============================================================================
+-- WEATHER ANALYSIS
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_WEATHER_LOAD_CORRELATION AS
+SELECT
+    w.ZONE_CODE,
+    DATE(w.DATETIME_UTC) AS DATE,
+    
+    -- Weather
+    ROUND(AVG(w.TEMP_F), 1) AS AVG_TEMP_F,
+    ROUND(MAX(w.TEMP_F), 1) AS MAX_TEMP_F,
+    ROUND(MIN(w.TEMP_F), 1) AS MIN_TEMP_F,
+    ROUND(AVG(w.WIND_SPEED_MPH), 1) AS AVG_WIND_SPEED,
+    ROUND(SUM(w.CDD), 1) AS TOTAL_CDD,
+    ROUND(SUM(w.HDD), 1) AS TOTAL_HDD,
+    
+    -- Load
+    ROUND(AVG(l.LOAD_MW), 2) AS AVG_LOAD_MW,
+    ROUND(MAX(l.LOAD_MW), 2) AS PEAK_LOAD_MW,
+    
+    -- Prices
+    ROUND(AVG(p.RT_LMP), 2) AS AVG_RT_LMP,
+    ROUND(MAX(p.RT_LMP), 2) AS PEAK_RT_LMP,
+    
+    -- Extreme Weather Flag
+    MAX(CASE WHEN w.TEMP_F > 100 OR w.TEMP_F < 32 THEN 1 ELSE 0 END) AS IS_EXTREME_TEMP_DAY
+FROM ATOMIC.HOURLY_WEATHER w
+LEFT JOIN ATOMIC.HOURLY_LOAD l 
+    ON w.ZONE_CODE = l.ZONE_CODE 
+    AND w.DATETIME_UTC = l.DATETIME_UTC
+LEFT JOIN ATOMIC.HOURLY_LMP p 
+    ON w.ZONE_CODE = p.ZONE_CODE 
+    AND w.DATETIME_UTC = p.DATETIME_UTC
+GROUP BY w.ZONE_CODE, DATE(w.DATETIME_UTC);
+
+-- ============================================================================
+-- HIDDEN PATTERN DISCOVERY
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_HIDDEN_PATTERNS_SUMMARY AS
+SELECT
+    hp.PATTERN_ID,
+    hp.PATTERN_TYPE,
+    hp.PATTERN_NAME,
+    hp.DESCRIPTION,
+    hp.DISCOVERY_DATE,
+    hp.AFFECTED_ZONES,
+    hp.OCCURRENCE_COUNT,
+    hp.AVG_PRICE_IMPACT,
+    hp.TOTAL_COST_IMPACT,
+    hp.CONFIDENCE_SCORE,
+    hp.STATUS,
+    hp.ACTION_TAKEN,
+    
+    -- Severity indicator
+    CASE
+        WHEN hp.TOTAL_COST_IMPACT > 1000000 THEN 'CRITICAL'
+        WHEN hp.TOTAL_COST_IMPACT > 100000 THEN 'HIGH'
+        WHEN hp.TOTAL_COST_IMPACT > 10000 THEN 'MEDIUM'
+        ELSE 'LOW'
+    END AS SEVERITY
+FROM ML.HIDDEN_PATTERN hp
+WHERE hp.STATUS != 'Template'
+ORDER BY hp.DISCOVERY_DATE DESC, hp.TOTAL_COST_IMPACT DESC;
+
+-- ============================================================================
+-- AI AGENT CONTEXT VIEWS
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_AGENT_MARKET_CONTEXT AS
+SELECT
+    CURRENT_TIMESTAMP() AS CONTEXT_TIME,
+    
+    -- System-wide metrics
+    (SELECT SUM(LOAD_MW) FROM ATOMIC.HOURLY_LOAD 
+     WHERE DATETIME_UTC = DATE_TRUNC('hour', CURRENT_TIMESTAMP())) AS SYSTEM_LOAD_MW,
+    
+    (SELECT AVG(RT_LMP) FROM ATOMIC.HOURLY_LMP 
+     WHERE DATETIME_UTC = DATE_TRUNC('hour', CURRENT_TIMESTAMP())) AS AVG_SYSTEM_PRICE,
+    
+    -- Recent alerts
+    (SELECT COUNT(*) FROM ATOMIC.PRICE_ANOMALY_EVENT 
+     WHERE EVENT_START > DATEADD('hour', -24, CURRENT_TIMESTAMP())) AS ALERTS_LAST_24H,
+    
+    -- Model performance
+    (SELECT AVG(MAPE) FROM ML.MODEL_PERFORMANCE_LOG 
+     WHERE EVALUATION_DATE = CURRENT_DATE()) AS TODAYS_MAPE;
+
+-- ============================================================================
+-- MORNING BRIEF DATA
+-- ============================================================================
+
+CREATE OR REPLACE VIEW V_MORNING_BRIEF_DATA AS
+WITH yesterday_stats AS (
+    SELECT
+        ZONE_CODE,
+        AVG(LOAD_MW) AS AVG_LOAD,
+        MAX(LOAD_MW) AS PEAK_LOAD,
+        AVG(FORECAST_ERROR_PCT) AS AVG_FORECAST_ERROR
+    FROM ATOMIC.HOURLY_LOAD
+    WHERE DATE(DATETIME_UTC) = CURRENT_DATE() - 1
+    GROUP BY ZONE_CODE
+),
+yesterday_prices AS (
+    SELECT
+        ZONE_CODE,
+        AVG(RT_LMP) AS AVG_PRICE,
+        MAX(RT_LMP) AS PEAK_PRICE,
+        SUM(CASE WHEN RT_LMP > 100 THEN 1 ELSE 0 END) AS HIGH_PRICE_HOURS
+    FROM ATOMIC.HOURLY_LMP
+    WHERE DATE(DATETIME_UTC) = CURRENT_DATE() - 1
+    GROUP BY ZONE_CODE
+)
+SELECT
+    z.ZONE_CODE,
+    z.ZONE_NAME,
+    ys.AVG_LOAD,
+    ys.PEAK_LOAD,
+    ys.AVG_FORECAST_ERROR,
+    yp.AVG_PRICE,
+    yp.PEAK_PRICE,
+    yp.HIGH_PRICE_HOURS,
+    
+    -- Weather risk for today
+    wr.RISK_SCORE AS TODAY_WEATHER_RISK,
+    wr.RISK_CATEGORY AS TODAY_RISK_CATEGORY
+FROM ATOMIC.LOAD_ZONE z
+LEFT JOIN yesterday_stats ys ON z.ZONE_CODE = ys.ZONE_CODE
+LEFT JOIN yesterday_prices yp ON z.ZONE_CODE = yp.ZONE_CODE
+LEFT JOIN ML.WEATHER_RISK_PREDICTION wr 
+    ON z.ZONE_CODE = wr.ZONE_CODE 
+    AND wr.FORECAST_DATE = CURRENT_DATE();

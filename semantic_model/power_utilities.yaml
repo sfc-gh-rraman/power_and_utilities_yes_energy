@@ -1,0 +1,354 @@
+name: power_utilities_semantic_model
+description: |
+  Semantic model for ERCOT Power & Utilities Intelligence Platform.
+  Enables natural language queries about load forecasting, pricing, 
+  weather impacts, and market analytics.
+
+tables:
+  - name: LOAD_ZONE
+    description: ERCOT load zones reference table with geographic and capacity information
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: LOAD_ZONE
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone", "region", "area"]
+        description: The short code for the ERCOT zone (HOUSTON, NORTH, SOUTH, WEST)
+        expr: ZONE_CODE
+        data_type: VARCHAR
+        sample_values: ["HOUSTON", "NORTH", "SOUTH", "WEST"]
+      - name: zone_name
+        synonyms: ["zone full name", "region name"]
+        description: The full descriptive name of the zone
+        expr: ZONE_NAME
+        data_type: VARCHAR
+      - name: iso
+        synonyms: ["grid operator", "market"]
+        description: The independent system operator (always ERCOT)
+        expr: ISO
+        data_type: VARCHAR
+    measures:
+      - name: peak_load_capacity
+        synonyms: ["max load", "capacity"]
+        description: Peak load capacity in MW
+        expr: PEAK_LOAD_MW
+        data_type: NUMBER
+      - name: population_served
+        synonyms: ["population", "customers"]
+        description: Population served by the zone
+        expr: POPULATION_SERVED
+        data_type: NUMBER
+
+  - name: HOURLY_LOAD
+    description: Hourly electricity load/demand data by zone
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: HOURLY_LOAD
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone", "region"]
+        description: The ERCOT zone code
+        expr: ZONE_CODE
+        data_type: VARCHAR
+      - name: datetime
+        synonyms: ["time", "timestamp", "hour"]
+        description: The UTC timestamp of the load reading
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+      - name: date
+        synonyms: ["day"]
+        description: The date of the load reading
+        expr: DATE(DATETIME_UTC)
+        data_type: DATE
+      - name: hour_of_day
+        synonyms: ["hour"]
+        description: Hour of day (0-23)
+        expr: HOUR(DATETIME_UTC)
+        data_type: NUMBER
+    time_dimensions:
+      - name: datetime_utc
+        synonyms: ["datetime", "timestamp"]
+        description: UTC timestamp
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+    measures:
+      - name: load_mw
+        synonyms: ["demand", "load", "electricity demand", "power demand"]
+        description: Actual load in megawatts
+        expr: LOAD_MW
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: forecast_mw
+        synonyms: ["predicted load", "forecasted demand"]
+        description: Forecasted load in megawatts
+        expr: LOAD_FORECAST_MW
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: forecast_error
+        synonyms: ["error", "prediction error"]
+        description: Forecast error in megawatts
+        expr: FORECAST_ERROR_MW
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: forecast_error_pct
+        synonyms: ["mape", "error percentage"]
+        description: Forecast error as percentage
+        expr: FORECAST_ERROR_PCT
+        data_type: NUMBER
+        default_aggregation: avg
+
+  - name: HOURLY_LMP
+    description: Hourly Locational Marginal Prices (LMP) by zone/node
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: HOURLY_LMP
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone", "region"]
+        description: The ERCOT zone code
+        expr: ZONE_CODE
+        data_type: VARCHAR
+      - name: node_name
+        synonyms: ["node", "price node"]
+        description: The price node name
+        expr: NODE_NAME
+        data_type: VARCHAR
+      - name: datetime
+        synonyms: ["time", "timestamp"]
+        description: UTC timestamp
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+      - name: is_price_spike
+        synonyms: ["spike", "high price"]
+        description: Whether this hour had a price spike
+        expr: IS_PRICE_SPIKE
+        data_type: BOOLEAN
+    time_dimensions:
+      - name: datetime_utc
+        synonyms: ["datetime", "timestamp"]
+        description: UTC timestamp
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+    measures:
+      - name: da_lmp
+        synonyms: ["day ahead price", "DAM price", "forward price"]
+        description: Day-ahead LMP in $/MWh
+        expr: DA_LMP
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: rt_lmp
+        synonyms: ["real time price", "spot price", "current price"]
+        description: Real-time LMP in $/MWh
+        expr: RT_LMP
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: congestion
+        synonyms: ["congestion cost", "transmission constraint"]
+        description: Congestion component of LMP
+        expr: RT_CONGESTION
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: da_rt_spread
+        synonyms: ["spread", "basis"]
+        description: Difference between DA and RT price
+        expr: DA_RT_SPREAD
+        data_type: NUMBER
+        default_aggregation: avg
+
+  - name: HOURLY_WEATHER
+    description: Hourly weather observations by zone
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: HOURLY_WEATHER
+    dimensions:
+      - name: zone_code
+        synonyms: ["zone", "region"]
+        description: The ERCOT zone code
+        expr: ZONE_CODE
+        data_type: VARCHAR
+      - name: datetime
+        synonyms: ["time", "timestamp"]
+        description: UTC timestamp
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+      - name: is_extreme_weather
+        synonyms: ["extreme", "severe weather"]
+        description: Whether conditions are extreme
+        expr: IS_EXTREME_WEATHER
+        data_type: BOOLEAN
+    time_dimensions:
+      - name: datetime_utc
+        synonyms: ["datetime", "timestamp"]
+        description: UTC timestamp
+        expr: DATETIME_UTC
+        data_type: TIMESTAMP
+    measures:
+      - name: temperature
+        synonyms: ["temp", "temperature fahrenheit"]
+        description: Temperature in Fahrenheit
+        expr: TEMP_F
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: wind_speed
+        synonyms: ["wind"]
+        description: Wind speed in MPH
+        expr: WIND_SPEED_MPH
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: cdd
+        synonyms: ["cooling degree days"]
+        description: Cooling degree days (temp above 65F)
+        expr: CDD
+        data_type: NUMBER
+        default_aggregation: sum
+      - name: hdd
+        synonyms: ["heating degree days"]
+        description: Heating degree days (temp below 65F)
+        expr: HDD
+        data_type: NUMBER
+        default_aggregation: sum
+
+  - name: PRICE_ANOMALY_EVENT
+    description: Detected price anomaly events
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ATOMIC
+      table: PRICE_ANOMALY_EVENT
+    dimensions:
+      - name: event_type
+        synonyms: ["type", "anomaly type"]
+        description: Type of price anomaly
+        expr: EVENT_TYPE
+        data_type: VARCHAR
+      - name: zone_code
+        synonyms: ["zone", "region"]
+        description: Affected zone
+        expr: ZONE_CODE
+        data_type: VARCHAR
+      - name: severity
+        synonyms: ["level", "impact level"]
+        description: Severity of the event
+        expr: SEVERITY
+        data_type: VARCHAR
+      - name: probable_cause
+        synonyms: ["cause", "reason"]
+        description: Likely cause of the anomaly
+        expr: PROBABLE_CAUSE
+        data_type: VARCHAR
+    time_dimensions:
+      - name: event_start
+        synonyms: ["start time", "began"]
+        description: When the event started
+        expr: EVENT_START
+        data_type: TIMESTAMP
+    measures:
+      - name: peak_price
+        synonyms: ["max price", "highest price"]
+        description: Peak price during event
+        expr: PEAK_PRICE
+        data_type: NUMBER
+        default_aggregation: max
+      - name: duration_hours
+        synonyms: ["duration", "length"]
+        description: Duration in hours
+        expr: DURATION_HOURS
+        data_type: NUMBER
+        default_aggregation: avg
+
+  - name: MODEL_REGISTRY
+    description: ML model registry with performance metrics
+    base_table:
+      database: POWER_UTILITIES_DB
+      schema: ML
+      table: MODEL_REGISTRY
+    dimensions:
+      - name: model_name
+        synonyms: ["model", "algorithm"]
+        description: Name of the ML model
+        expr: MODEL_NAME
+        data_type: VARCHAR
+      - name: model_version
+        synonyms: ["version"]
+        description: Version of the model
+        expr: MODEL_VERSION
+        data_type: VARCHAR
+      - name: model_type
+        synonyms: ["type", "algorithm type"]
+        description: Type of ML algorithm
+        expr: MODEL_TYPE
+        data_type: VARCHAR
+      - name: is_active
+        synonyms: ["active", "deployed"]
+        description: Whether model is currently active
+        expr: IS_ACTIVE
+        data_type: BOOLEAN
+    measures:
+      - name: mape
+        synonyms: ["accuracy", "error rate"]
+        description: Mean Absolute Percentage Error
+        expr: MAPE
+        data_type: NUMBER
+      - name: rmse
+        synonyms: ["root mean squared error"]
+        description: Root Mean Squared Error
+        expr: RMSE
+        data_type: NUMBER
+      - name: r2_score
+        synonyms: ["r squared", "coefficient of determination"]
+        description: R-squared score
+        expr: R2_SCORE
+        data_type: NUMBER
+
+verified_queries:
+  - name: current_load_by_zone
+    question: What is the current load by zone?
+    sql: |
+      SELECT 
+        ZONE_CODE,
+        LOAD_MW,
+        DATETIME_UTC
+      FROM POWER_UTILITIES_DB.ATOMIC.HOURLY_LOAD
+      WHERE DATETIME_UTC = (SELECT MAX(DATETIME_UTC) FROM POWER_UTILITIES_DB.ATOMIC.HOURLY_LOAD)
+      ORDER BY LOAD_MW DESC
+
+  - name: average_price_by_zone
+    question: What is the average price by zone today?
+    sql: |
+      SELECT 
+        ZONE_CODE,
+        ROUND(AVG(RT_LMP), 2) AS avg_price,
+        ROUND(MAX(RT_LMP), 2) AS peak_price
+      FROM POWER_UTILITIES_DB.ATOMIC.HOURLY_LMP
+      WHERE DATE(DATETIME_UTC) = CURRENT_DATE()
+      GROUP BY ZONE_CODE
+      ORDER BY avg_price DESC
+
+  - name: model_performance
+    question: How accurate is the load forecast model?
+    sql: |
+      SELECT 
+        MODEL_NAME,
+        MODEL_VERSION,
+        MAPE AS accuracy_pct,
+        RMSE,
+        R2_SCORE,
+        IS_ACTIVE
+      FROM POWER_UTILITIES_DB.ML.MODEL_REGISTRY
+      WHERE MODEL_NAME = 'LOAD_FORECASTER'
+
+  - name: price_spikes_last_week
+    question: How many price spikes occurred in the last week?
+    sql: |
+      SELECT 
+        ZONE_CODE,
+        COUNT(*) AS spike_count,
+        ROUND(AVG(PEAK_PRICE), 2) AS avg_peak_price,
+        ROUND(MAX(PEAK_PRICE), 2) AS max_peak_price
+      FROM POWER_UTILITIES_DB.ATOMIC.PRICE_ANOMALY_EVENT
+      WHERE EVENT_START >= DATEADD('day', -7, CURRENT_DATE())
+      GROUP BY ZONE_CODE
+      ORDER BY spike_count DESC

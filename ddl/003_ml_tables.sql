@@ -1,0 +1,258 @@
+-- ============================================================================
+-- POWER & UTILITIES INTELLIGENCE PLATFORM - ML Tables
+-- ============================================================================
+-- Tables for ML model artifacts, predictions, and feature stores
+-- ============================================================================
+
+USE DATABASE POWER_UTILITIES_DB;
+USE SCHEMA ML;
+
+-- ============================================================================
+-- MODEL REGISTRY
+-- ============================================================================
+
+CREATE OR REPLACE TABLE MODEL_REGISTRY (
+    MODEL_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    MODEL_NAME VARCHAR(100) NOT NULL,
+    MODEL_VERSION VARCHAR(20) NOT NULL,
+    MODEL_TYPE VARCHAR(50) NOT NULL,
+    DESCRIPTION VARCHAR(1000),
+    TARGET_VARIABLE VARCHAR(100),
+    FEATURES ARRAY,
+    HYPERPARAMETERS VARIANT,
+    TRAINING_START_DATE DATE,
+    TRAINING_END_DATE DATE,
+    TRAINING_SAMPLES NUMBER,
+    MAPE NUMBER(8,4),
+    RMSE NUMBER(12,4),
+    R2_SCORE NUMBER(8,4),
+    MAE NUMBER(12,4),
+    MODEL_PATH VARCHAR(500),
+    IS_ACTIVE BOOLEAN DEFAULT FALSE,
+    CREATED_BY VARCHAR(100),
+    CREATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    DEPLOYED_AT TIMESTAMP_NTZ,
+    CONSTRAINT UK_MODEL_VERSION UNIQUE (MODEL_NAME, MODEL_VERSION)
+);
+
+-- Seed initial models
+INSERT INTO MODEL_REGISTRY (MODEL_NAME, MODEL_VERSION, MODEL_TYPE, DESCRIPTION, TARGET_VARIABLE, MAPE, IS_ACTIVE)
+VALUES 
+    ('LOAD_FORECASTER', 'v1.0', 'XGBoost_Hybrid', 'Physics-enhanced XGBoost for load forecasting', 'LOAD_MW', 1.00, TRUE),
+    ('PRICE_PREDICTOR', 'v1.0', 'XGBoost', 'Zone-level LMP prediction model', 'LMP', NULL, FALSE),
+    ('CONGESTION_CLASSIFIER', 'v1.0', 'RandomForest', 'Congestion event classifier', 'IS_CONGESTED', NULL, FALSE),
+    ('WEATHER_RISK_SCORER', 'v1.0', 'GradientBoosting', 'Extreme weather risk scoring', 'RISK_SCORE', NULL, FALSE);
+
+-- ============================================================================
+-- FEATURE STORE
+-- ============================================================================
+
+CREATE OR REPLACE TABLE FEATURE_STORE_HOURLY (
+    FEATURE_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    ZONE_CODE VARCHAR(50) NOT NULL,
+    DATETIME_UTC TIMESTAMP_NTZ NOT NULL,
+    
+    -- Raw Weather Features
+    TEMP_F NUMBER(8,2),
+    DEW_POINT_F NUMBER(8,2),
+    WIND_SPEED_MPH NUMBER(8,2),
+    HUMIDITY_PCT NUMBER(8,2),
+    PRECIP_IN NUMBER(8,4),
+    
+    -- Physics-Based Features (from Load Forecast Model v2)
+    CDD NUMBER(8,2),
+    HDD NUMBER(8,2),
+    WIND_CHILL_F NUMBER(8,2),
+    HEAT_INDEX_F NUMBER(8,2),
+    THERMAL_INERTIA NUMBER(8,2),
+    CUMULATIVE_TEMP_7D NUMBER(10,2),
+    
+    -- Temporal Features
+    HOUR_OF_DAY NUMBER(2),
+    DAY_OF_WEEK NUMBER(1),
+    MONTH NUMBER(2),
+    IS_WEEKEND BOOLEAN,
+    IS_HOLIDAY BOOLEAN,
+    SEASON VARCHAR(20),
+    
+    -- Lag Features
+    LOAD_LAG_1H NUMBER(12,2),
+    LOAD_LAG_24H NUMBER(12,2),
+    LOAD_LAG_168H NUMBER(12,2),
+    PRICE_LAG_1H NUMBER(12,4),
+    PRICE_LAG_24H NUMBER(12,4),
+    
+    -- Rolling Statistics
+    LOAD_ROLLING_24H_AVG NUMBER(12,2),
+    LOAD_ROLLING_24H_STD NUMBER(12,2),
+    PRICE_ROLLING_24H_AVG NUMBER(12,4),
+    PRICE_ROLLING_24H_STD NUMBER(12,4),
+    TEMP_ROLLING_24H_AVG NUMBER(8,2),
+    
+    -- Fuel Prices
+    NG_PRICE NUMBER(10,4),
+    COAL_PRICE NUMBER(10,4),
+    
+    -- Target Variables (for training)
+    ACTUAL_LOAD_MW NUMBER(12,2),
+    ACTUAL_LMP NUMBER(12,4),
+    
+    CREATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT UK_FEATURE_STORE UNIQUE (ZONE_CODE, DATETIME_UTC)
+);
+
+ALTER TABLE FEATURE_STORE_HOURLY CLUSTER BY (ZONE_CODE, DATETIME_UTC);
+
+-- ============================================================================
+-- PREDICTIONS
+-- ============================================================================
+
+-- Load Forecast Predictions
+CREATE OR REPLACE TABLE LOAD_FORECAST_PREDICTION (
+    PREDICTION_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    MODEL_ID NUMBER,
+    MODEL_VERSION VARCHAR(20),
+    ZONE_CODE VARCHAR(50) NOT NULL,
+    FORECAST_DATETIME TIMESTAMP_NTZ NOT NULL,
+    FORECAST_HORIZON_HOURS NUMBER(4),
+    PREDICTED_LOAD_MW NUMBER(12,2) NOT NULL,
+    PREDICTION_LOWER_95 NUMBER(12,2),
+    PREDICTION_UPPER_95 NUMBER(12,2),
+    ACTUAL_LOAD_MW NUMBER(12,2),
+    ABSOLUTE_ERROR_MW NUMBER(12,2),
+    APE NUMBER(8,4),
+    PREDICTION_RUN_TIME TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT UK_LOAD_FORECAST UNIQUE (MODEL_VERSION, ZONE_CODE, FORECAST_DATETIME, PREDICTION_RUN_TIME)
+);
+
+-- Price Predictions
+CREATE OR REPLACE TABLE PRICE_PREDICTION (
+    PREDICTION_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    MODEL_ID NUMBER,
+    MODEL_VERSION VARCHAR(20),
+    ZONE_CODE VARCHAR(50) NOT NULL,
+    NODE_NAME VARCHAR(100),
+    FORECAST_DATETIME TIMESTAMP_NTZ NOT NULL,
+    FORECAST_HORIZON_HOURS NUMBER(4),
+    PREDICTED_DA_LMP NUMBER(12,4),
+    PREDICTED_RT_LMP NUMBER(12,4),
+    PREDICTED_CONGESTION NUMBER(12,4),
+    PREDICTION_LOWER_95 NUMBER(12,4),
+    PREDICTION_UPPER_95 NUMBER(12,4),
+    ACTUAL_LMP NUMBER(12,4),
+    ABSOLUTE_ERROR NUMBER(12,4),
+    SPIKE_PROBABILITY NUMBER(8,4),
+    PREDICTION_RUN_TIME TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);
+
+-- Congestion Predictions
+CREATE OR REPLACE TABLE CONGESTION_PREDICTION (
+    PREDICTION_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    MODEL_ID NUMBER,
+    MODEL_VERSION VARCHAR(20),
+    SOURCE_ZONE VARCHAR(50) NOT NULL,
+    SINK_ZONE VARCHAR(50) NOT NULL,
+    FORECAST_DATETIME TIMESTAMP_NTZ NOT NULL,
+    CONGESTION_PROBABILITY NUMBER(8,4),
+    PREDICTED_CONGESTION_PRICE NUMBER(12,4),
+    SEVERITY_CLASS VARCHAR(20),
+    CONFIDENCE_SCORE NUMBER(8,4),
+    ACTUAL_CONGESTION_PRICE NUMBER(12,4),
+    PREDICTION_RUN_TIME TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);
+
+-- Weather Risk Scores
+CREATE OR REPLACE TABLE WEATHER_RISK_PREDICTION (
+    PREDICTION_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    MODEL_ID NUMBER,
+    ZONE_CODE VARCHAR(50) NOT NULL,
+    FORECAST_DATE DATE NOT NULL,
+    RISK_SCORE NUMBER(8,4),
+    RISK_CATEGORY VARCHAR(20),
+    HEAT_RISK NUMBER(8,4),
+    COLD_RISK NUMBER(8,4),
+    STORM_RISK NUMBER(8,4),
+    WIND_RISK NUMBER(8,4),
+    KEY_DRIVERS ARRAY,
+    PREDICTION_RUN_TIME TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT UK_WEATHER_RISK UNIQUE (ZONE_CODE, FORECAST_DATE)
+);
+
+-- ============================================================================
+-- HIDDEN PATTERN DETECTION (like Hidden Discovery in ATLAS)
+-- ============================================================================
+
+CREATE OR REPLACE TABLE HIDDEN_PATTERN (
+    PATTERN_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    PATTERN_TYPE VARCHAR(50) NOT NULL,
+    PATTERN_NAME VARCHAR(200) NOT NULL,
+    DESCRIPTION VARCHAR(2000),
+    DISCOVERY_DATE DATE DEFAULT CURRENT_DATE(),
+    
+    -- Pattern Details
+    AFFECTED_ZONES ARRAY,
+    TIME_PATTERN VARCHAR(100),
+    TRIGGER_CONDITIONS VARIANT,
+    
+    -- Impact Assessment
+    OCCURRENCE_COUNT NUMBER,
+    AVG_PRICE_IMPACT NUMBER(12,4),
+    TOTAL_COST_IMPACT NUMBER(14,2),
+    AFFECTED_HOURS NUMBER,
+    
+    -- Detection Metadata
+    DETECTION_METHOD VARCHAR(100),
+    CONFIDENCE_SCORE NUMBER(8,4),
+    SUPPORTING_EVIDENCE VARIANT,
+    
+    -- Status
+    STATUS VARCHAR(20) DEFAULT 'New',
+    REVIEWED_BY VARCHAR(100),
+    REVIEWED_AT TIMESTAMP_NTZ,
+    ACTION_TAKEN VARCHAR(1000),
+    
+    CREATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);
+
+-- Example hidden patterns to detect
+INSERT INTO HIDDEN_PATTERN (PATTERN_TYPE, PATTERN_NAME, DESCRIPTION, DETECTION_METHOD, STATUS)
+VALUES 
+    ('WEATHER_PRICE', 'Gulf Coast Humidity Price Impact', 'High humidity events in Houston zone consistently cause 15-20% price increases even without temperature extremes', 'Correlation Analysis', 'Template'),
+    ('CONGESTION', 'West-to-Houston Evening Corridor', 'Systematic congestion between West and Houston zones during evening peak (5-8 PM) on hot days', 'Pattern Mining', 'Template'),
+    ('DEMAND_SURGE', 'Data Center Load Ramp', 'Rapid demand increases from new data center loads causing forecast errors', 'Anomaly Detection', 'Template'),
+    ('OUTAGE_CORRELATION', 'Cascading Gas Plant Outages', 'Natural gas plant outages tend to cluster within 48-hour windows during cold snaps', 'Sequence Analysis', 'Template');
+
+-- ============================================================================
+-- MODEL PERFORMANCE TRACKING
+-- ============================================================================
+
+CREATE OR REPLACE TABLE MODEL_PERFORMANCE_LOG (
+    LOG_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    MODEL_ID NUMBER,
+    MODEL_NAME VARCHAR(100),
+    MODEL_VERSION VARCHAR(20),
+    EVALUATION_DATE DATE NOT NULL,
+    ZONE_CODE VARCHAR(50),
+    
+    -- Performance Metrics
+    SAMPLE_COUNT NUMBER,
+    MAPE NUMBER(8,4),
+    RMSE NUMBER(12,4),
+    MAE NUMBER(12,4),
+    R2_SCORE NUMBER(8,4),
+    
+    -- Directional Accuracy
+    DIRECTION_ACCURACY NUMBER(8,4),
+    
+    -- Spike Detection
+    SPIKE_PRECISION NUMBER(8,4),
+    SPIKE_RECALL NUMBER(8,4),
+    SPIKE_F1 NUMBER(8,4),
+    
+    -- Drift Detection
+    FEATURE_DRIFT_SCORE NUMBER(8,4),
+    PREDICTION_DRIFT_SCORE NUMBER(8,4),
+    REQUIRES_RETRAIN BOOLEAN DEFAULT FALSE,
+    
+    CREATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);
